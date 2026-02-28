@@ -1,0 +1,27 @@
+# Python cache
+**/__pycache__/
+**/*.pyc
+
+# Bash
+outputs/
+
+# VCS
+.git
+.gitignore
+
+# LeRobot development/non-runtime assets
+lerobot/tests/
+lerobot/docs/
+lerobot/examples/
+lerobot/benchmarks/
+lerobot/media/
+lerobot/docker/
+lerobot/.pre-commit-config.yaml
+lerobot/requirements-ubuntu.txt
+lerobot/requirements-macos.txt
+lerobot/requirements.in
+lerobot/requirements_aistudio.txt
+lerobot/docs-requirements.txt
+lerobot/CONTRIBUTING.md
+lerobot/CODE_OF_CONDUCT.md
+lerobot/Makefile

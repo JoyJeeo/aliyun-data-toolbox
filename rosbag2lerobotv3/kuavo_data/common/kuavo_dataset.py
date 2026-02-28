@@ -8,7 +8,7 @@ from pprint import pprint
 import os
 import glob
 from collections import defaultdict
-from typing import Callable, Optional
+from typing import Callable, Optional, Tuple
 
 # ================ 机器人关节信息定义 ================
 
@@ -54,7 +54,7 @@ def init_parameters(cfg):
     global TASK_DESCRIPTION
 
     
-    from .config_dataset import load_config
+    from converter.configs.dataset_config import load_config
     config = load_config(cfg)
 
     # 从配置文件加载基本设置
@@ -484,39 +484,41 @@ class KuavoRosbagReader:
         bag_file: str,
         frame_callback: Callable[[dict, int], None],
         chunk_size: int = 100,
-        save_callback: Optional[Callable[[], None]] = None
+        save_callback: Optional[Callable[[], None]] = None,
+        crop_range: Optional[Tuple[float, float]] = None
     ) -> int:
         """
         分块流式处理rosbag（推荐用于超大rosbag）
-        
+
         参考Diffusion Policy的按需读取方式：
         1. 第一遍扫描：只读取时间戳（内存占用极小，只有几MB）
         2. 第二遍扫描：按时间窗口分块读取+对齐+处理
-        
+
         与process_rosbag的区别：
         - process_rosbag: 一次性加载所有数据到内存（内存峰值巨大）
         - process_rosbag_chunked: 分块读取，边读边对齐边处理（内存可控）
-        
+
         Args:
             bag_file: rosbag文件路径
             frame_callback: 处理每帧的回调函数 (aligned_frame, frame_idx) -> None
                            aligned_frame包含所有话题的对齐数据
             chunk_size: 每个chunk包含的帧数（默认100帧）
             save_callback: 每个chunk处理完后的回调（用于保存dataset和释放内存）
-        
+            crop_range: 裁剪范围 (min_position, max_position), 0.0-1.0, None表示不裁剪
+
         Returns:
             处理的总帧数
-            
+
         Example:
             def on_frame(aligned_frame, frame_idx):
                 # 处理对齐后的帧，添加到dataset
                 dataset.add_frame(...)
-            
+
             def on_chunk_done():
                 # 保存当前chunk，释放内存
                 dataset.save_episode()
                 gc.collect()
-            
+
             reader.process_rosbag_chunked(
                 bag_file="large.bag",
                 frame_callback=on_frame,
@@ -524,8 +526,8 @@ class KuavoRosbagReader:
                 save_callback=on_chunk_done
             )
         """
-        from common.chunk_process import ChunkedRosbagProcessor
-        
+        from converter.reader.chunk_processor import ChunkedRosbagProcessor
+
         processor = ChunkedRosbagProcessor(
             msg_processer=self._msg_processer,
             topic_process_map=self._topic_process_map,
@@ -533,13 +535,14 @@ class KuavoRosbagReader:
             train_hz=TRAIN_HZ,
             main_timeline_fps=MAIN_TIMELINE_FPS,
             sample_drop=SAMPLE_DROP,
-            only_half_up_body=ONLY_HALF_UP_BODY
+            only_half_up_body=ONLY_HALF_UP_BODY,
+            crop_range=crop_range  # 传递裁剪范围
         )
-        
-        # 第一遍：只扫描时间戳（内存占用极小）
+
+        # 第一遍：只扫描时间戳（现在会应用裁剪）
         main_timeline, main_timestamps, all_timestamps = processor.scan_timestamps_only(bag_file)
-        
-        # 第二遍：分块处理
+
+        # 第二遍：分块处理（只处理裁剪区间）
         return processor.process_in_chunks(
             bag_file=bag_file,
             main_timestamps=main_timestamps,
@@ -669,6 +672,7 @@ class KuavoRosbagReader:
     
     def list_bag_files(self, bag_dir: str):
         bag_files = glob.glob(os.path.join(bag_dir, '*.bag'))
+        bag_files = [f for f in bag_files if not f.endswith('.c.bag')]
         bag_files.sort()
         return bag_files
     
