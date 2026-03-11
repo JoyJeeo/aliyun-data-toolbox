@@ -1,4 +1,5 @@
-FROM osrf/ros:noetic-desktop-full-focal
+# FROM osrf/ros:noetic-desktop-full-focal
+FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
@@ -12,7 +13,27 @@ RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
     dpkg-reconfigure -f noninteractive tzdata
 
 # 安装额外依赖
-RUN apt-get update && apt-get install -y \
+# RUN apt-get update && apt-get install -y \
+#     wget \
+#     git \
+#     curl \
+#     jq \
+#     libgl1 \
+#     libglib2.0-0 \
+#     libx11-6 \
+#     libsm6 \
+#     ffmpeg \
+#     ca-certificates \
+#     && rm -rf /var/lib/apt/lists/*
+
+RUN apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    python3-venv \
+    python3-rosbag \
+    python3-roslib \
+    python3-std-msgs \
+    python3-sensor-msgs \
     wget \
     git \
     curl \
@@ -23,52 +44,62 @@ RUN apt-get update && apt-get install -y \
     libsm6 \
     ffmpeg \
     ca-certificates \
+    unzip \
+    bc \
     && rm -rf /var/lib/apt/lists/*
 
-# 安装 Miniconda
-RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh && \
-    bash ~/miniconda.sh -b -p /opt/conda && \
-    rm ~/miniconda.sh
-
-ENV PATH=/opt/conda/bin:$PATH
-
-# 接受 Conda ToS（新版 Miniconda 需要）
-RUN conda config --set auto_activate_base false && \
-    conda init bash
-
-# 创建 conda 环境并安装 Python 包
 WORKDIR /app
-# 复制代码
-COPY lerobot /app/lerobot
-RUN conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main && \
-    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+RUN python3 -m venv /opt/venv --system-site-packages
+ENV PATH=/opt/venv/bin:$PATH
+RUN mkdir -p /app/lerobot
+# Keep only the minimal installable subset to reduce image size.
+COPY lerobot/ /app/lerobot/
 
-RUN conda create -y -n kuavo_il python=3.10.16 
+RUN pip install --upgrade pip -i https://pypi.tuna.tsinghua.edu.cn/simple && \
+    pip install -e /app/lerobot --no-deps -i https://pypi.tuna.tsinghua.edu.cn/simple
 
-# 安装额外 pip 包（使用指定环境的 pip）
+RUN pip install \
+    'torch==2.7.1+cpu' \
+    'torchvision==0.22.1+cpu' \
+    'datasets>=2.19.0,<=3.6.0' \
+    huggingface-hub \
+    accelerate \
+    hydra-core \
+    av \
+    jsonlines \
+    Pillow \
+    joblib \
+    h5py \
+    scikit-learn \
+    oss2 \
+    opencv-python-headless \
+    requests \
+    tqdm \
+    packaging \
+    einops \
+    psutil \
+    termcolor \
+    drake==1.19.0 \
+    'pyarrow>=10.0.0' \
+    'pyyaml>=6.0' \
+    --extra-index-url https://download.pytorch.org/whl/cpu \
+    -i https://pypi.tuna.tsinghua.edu.cn/simple && \
+    pip install 'numpy==1.26.4' --force-reinstall --no-deps \
+    -i https://pypi.tuna.tsinghua.edu.cn/simple
 
-RUN /bin/bash -c "source /opt/conda/etc/profile.d/conda.sh && \
-    conda activate kuavo_il && \
-    pip install -e ./lerobot -i https://pypi.tuna.tsinghua.edu.cn/simple && \
-    pip install rospkg==1.6.0 -i https://pypi.tuna.tsinghua.edu.cn/simple && \
-    pip install gnupg==2.3.1 -i https://pypi.tuna.tsinghua.edu.cn/simple && \
-    pip install pycryptodomex==3.23.0 -i https://pypi.tuna.tsinghua.edu.cn/simple && \
-    pip install matplotlib -i https://pypi.tuna.tsinghua.edu.cn/simple && \
-    pip install pympler -i https://pypi.tuna.tsinghua.edu.cn/simple && \
-    pip install rich==14.1.0 -i https://pypi.tuna.tsinghua.edu.cn/simple && \
-    pip install hydra-core==1.3.2 -i https://pypi.tuna.tsinghua.edu.cn/simple "
-
-# 安装 cocli
-RUN curl -fL https://download.coscene.cn/cocli/install.sh | sh -s -- v1.3.0-rc3
+RUN curl -o ossutil-2.1.2-linux-amd64.zip https://gosspublic.alicdn.com/ossutil/v2/2.1.2/ossutil-2.1.2-linux-amd64.zip && \
+    unzip ossutil-2.1.2-linux-amd64.zip && \
+    cd ossutil-2.1.2-linux-amd64 && \
+    chmod 755 ossutil && \
+    mv ossutil /usr/local/bin/ && \
+    ln -s /usr/local/bin/ossutil /usr/bin/ossutil && \
+    cd .. && \
+    rm -rf ossutil-2.1.2-linux-amd64 ossutil-2.1.2-linux-amd64.zip
 
 # 复制应用文件
 COPY kuavo_data /app/kuavo_data
-RUN chmod +x /app/kuavo_data/*.sh
-# 默认命令
-# 激活 conda 环境并设置 PATH
-ENV PATH=/opt/conda/envs/kuavo_il/bin:/opt/conda/bin:$PATH
 
-# 确保 ROS 环境已 source（可选，但推荐）
-RUN echo "source /opt/ros/noetic/setup.bash" >> /root/.bashrc
+# 设置脚本可执行权限
+RUN chmod +x /app/kuavo_data/*.sh
 
 CMD ["/bin/bash"]
