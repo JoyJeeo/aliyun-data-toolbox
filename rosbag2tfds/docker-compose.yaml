@@ -1,0 +1,26 @@
+version: "3.9"
+
+services:
+  ros1-noetic:
+    image: cr.coscene.cn/leju-gym/lejutfds:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ros1-noetic-tfds
+    working_dir: /app
+    stdin_open: true
+    tty: true
+    volumes:
+      # 数据目录挂载（bag 文件、JSON、输出等）
+      # 注意：代码文件已内置在镜像中，不再需要挂载
+      - /cos/files:/cos/files:ro  # 只读挂载，bag 文件和 JSON
+      - /cos/outputs:/cos/outputs  # 输出目录
+    environment:
+      # 环境变量可以通过 docker-compose.yaml 或运行时传入
+      # 这些变量会被 run.sh 使用
+      - COS_RECORDID=${COS_RECORDID:-}
+      - COS_PROJECTID=${COS_PROJECTID:-}
+      - COS_FILE_VOLUME=${COS_FILE_VOLUME:-/cos/files}
+      - COS_TOKEN=${COS_TOKEN:-}
+    command: /bin/bash -lc "source /opt/ros/noetic/setup.bash && /app/run.sh"
+
